@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import postgres from 'postgres';
 import { invoices, customers, revenue, users } from '../lib/placeholder-data';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+const sql = postgres(process.env.nextjsdashboard_POSTGRES_URL!, { ssl: 'require' });
 
 async function seedUsers() {
   await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
@@ -81,6 +81,8 @@ async function seedCustomers() {
 }
 
 async function seedRevenue() {
+  console.log('💰 Creating revenue table...');
+
   await sql`
     CREATE TABLE IF NOT EXISTS revenue (
       month VARCHAR(4) NOT NULL UNIQUE,
@@ -88,30 +90,56 @@ async function seedRevenue() {
     );
   `;
 
-  const insertedRevenue = await Promise.all(
-    revenue.map(
-      (rev) => sql`
-        INSERT INTO revenue (month, revenue)
-        VALUES (${rev.month}, ${rev.revenue})
-        ON CONFLICT (month) DO NOTHING;
-      `,
-    ),
-  );
+  console.log('✅ Revenue table ready');
 
-  return insertedRevenue;
+  console.log('📊 Revenue data:', revenue);
+
+  for (const rev of revenue) {
+    console.log('➡️ Trying:', rev.month, rev.revenue);
+
+    await sql`
+      INSERT INTO revenue (month, revenue)
+      VALUES (${rev.month}, ${rev.revenue})
+      ON CONFLICT (month) DO NOTHING;
+    `;
+
+    console.log('✅ Done:', rev.month);
+  }
+
+  return true;
 }
 
 export async function GET() {
   try {
-    const result = await sql.begin((sql) => [
-      seedUsers(),
-      seedCustomers(),
-      seedInvoices(),
-      seedRevenue(),
-    ]);
+    console.log('🌱 SEED STARTED');
+
+    console.log('👤 Seeding users...');
+    await seedUsers();
+    console.log('✅ Users seeded');
+
+    console.log('👥 Seeding customers...');
+    await seedCustomers();
+    console.log('✅ Customers seeded');
+
+    console.log('🧾 Seeding invoices...');
+    await seedInvoices();
+    console.log('✅ Invoices seeded');
+
+    console.log('💰 Seeding revenue...');
+    await seedRevenue();
+    console.log('✅ Revenue seeded');
+
+    console.log('🎉 SEED COMPLETE');
 
     return Response.json({ message: 'Database seeded successfully' });
   } catch (error) {
-    return Response.json({ error }, { status: 500 });
+    console.error('❌ SEED ERROR:', error);
+
+    return Response.json(
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    );
   }
 }
